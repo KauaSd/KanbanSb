@@ -1,0 +1,14 @@
+[
+  {
+    "id": "1778961373940",
+    "userId": "1778961352988",
+    "title": "Teste",
+    "description": "teste",
+    "status": "doing",
+    "dueDate": "2026-05-17",
+    "priority": "medium",
+    "completed": false,
+    "createdAt": "2026-05-16T19:56:13.940Z",
+    "updatedAt": "2026-05-16T19:59:01.165Z"
+  }
+]
