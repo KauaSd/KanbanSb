@@ -43,6 +43,10 @@ function writeJSON(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 }
 
+// -----------------------------------------------------
+// ROTAS DE AUTENTICAÇÃO
+// -----------------------------------------------------
+
 // Cadastro
 app.post('/api/auth/register', async (req, res) => {
   const { name, email, password } = req.body;
@@ -56,6 +60,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 
   try {
+    // Hash da senha com saltRounds: 10
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = {
       userId: Date.now().toString(),
@@ -91,6 +96,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Credenciais inválidas' });
     }
 
+    // JWT válido por 8 horas
     const token = jwt.sign(
       { userId: user.userId, name: user.name, email: user.email },
       SECRET_KEY,
@@ -116,9 +122,10 @@ app.post('/api/auth/logout', authenticateToken, (req, res) => {
   res.json({ message: 'Logout realizado com sucesso' });
 });
 
+// Middleware de Autenticação
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const token = authHeader && authHeader.split(' ')[1]; // Formato: Bearer <token>
 
   if (!token) return res.status(401).json({ error: 'Acesso negado, nenhum token fornecido' });
 
@@ -134,27 +141,42 @@ function authenticateToken(req, res, next) {
   });
 }
 
+// -----------------------------------------------------
+// ROTAS DE TAREFAS (Protegidas)
+// -----------------------------------------------------
+
+// Listar Tarefas (calculando isOverdue)
 app.get('/api/tasks', authenticateToken, (req, res) => {
   const allTasks = readJSON(TASKS_FILE);
+  // Retornar apenas tarefas do usuário autenticado
   const userTasks = allTasks.filter(t => t.userId === req.user.userId);
+
   const now = new Date();
+
   const tasksWithOverdue = userTasks.map(task => {
     let isOverdue = false;
+    // Uma tarefa está em atraso se: dueDate existe, dueDate < new Date() e completed === false
     if (task.dueDate && !task.completed) {
       const dueDate = new Date(task.dueDate);
-      if (dueDate < now) isOverdue = true;
+      if (dueDate < now) {
+        isOverdue = true;
+      }
     }
     return { ...task, isOverdue };
   });
+
   res.json(tasksWithOverdue);
 });
 
+// Criar Tarefa
 app.post('/api/tasks', authenticateToken, (req, res) => {
   const { title, description, status, dueDate, priority } = req.body;
+
   if (!title) return res.status(400).json({ error: 'O título é obrigatório' });
+
   const tasks = readJSON(TASKS_FILE);
   const newTask = {
-    id: Date.now().toString(),
+    id: Date.now().toString(), // id único
     userId: req.user.userId,
     title,
     description: description || '',
@@ -165,17 +187,22 @@ app.post('/api/tasks', authenticateToken, (req, res) => {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
+
   tasks.push(newTask);
   writeJSON(TASKS_FILE, tasks);
   res.status(201).json(newTask);
 });
 
+// Editar Tarefa
 app.put('/api/tasks/:id', authenticateToken, (req, res) => {
   const { title, description, status, dueDate, priority } = req.body;
   const tasks = readJSON(TASKS_FILE);
   const taskIndex = tasks.findIndex(t => t.id === req.params.id);
+
   if (taskIndex === -1) return res.status(404).json({ error: 'Tarefa não encontrada' });
+  // Garantir que a tarefa pertence ao usuário autenticado
   if (tasks[taskIndex].userId !== req.user.userId) return res.status(403).json({ error: 'Não autorizado' });
+
   tasks[taskIndex] = {
     ...tasks[taskIndex],
     title: title !== undefined ? title : tasks[taskIndex].title,
@@ -185,42 +212,55 @@ app.put('/api/tasks/:id', authenticateToken, (req, res) => {
     priority: priority !== undefined ? priority : tasks[taskIndex].priority,
     updatedAt: new Date().toISOString()
   };
+
   writeJSON(TASKS_FILE, tasks);
   res.json(tasks[taskIndex]);
 });
 
+// Excluir Tarefa
 app.delete('/api/tasks/:id', authenticateToken, (req, res) => {
   let tasks = readJSON(TASKS_FILE);
   const taskIndex = tasks.findIndex(t => t.id === req.params.id);
+
   if (taskIndex === -1) return res.status(404).json({ error: 'Tarefa não encontrada' });
   if (tasks[taskIndex].userId !== req.user.userId) return res.status(403).json({ error: 'Não autorizado' });
+
   tasks = tasks.filter(t => t.id !== req.params.id);
   writeJSON(TASKS_FILE, tasks);
   res.json({ message: 'Tarefa excluída' });
 });
 
+// Atualizar Apenas o Status (para Drag & Drop)
 app.patch('/api/tasks/:id/status', authenticateToken, (req, res) => {
   const { status } = req.body;
   if (!['todo', 'doing', 'done'].includes(status)) {
     return res.status(400).json({ error: 'Status inválido' });
   }
+
   const tasks = readJSON(TASKS_FILE);
   const taskIndex = tasks.findIndex(t => t.id === req.params.id);
+
   if (taskIndex === -1) return res.status(404).json({ error: 'Tarefa não encontrada' });
   if (tasks[taskIndex].userId !== req.user.userId) return res.status(403).json({ error: 'Não autorizado' });
+
   tasks[taskIndex].status = status;
   tasks[taskIndex].updatedAt = new Date().toISOString();
+
   writeJSON(TASKS_FILE, tasks);
   res.json(tasks[taskIndex]);
 });
 
+// Atualizar "completed" (true/false) independente do status
 app.patch('/api/tasks/:id/complete', authenticateToken, (req, res) => {
   const tasks = readJSON(TASKS_FILE);
   const taskIndex = tasks.findIndex(t => t.id === req.params.id);
+
   if (taskIndex === -1) return res.status(404).json({ error: 'Tarefa não encontrada' });
   if (tasks[taskIndex].userId !== req.user.userId) return res.status(403).json({ error: 'Não autorizado' });
+
   tasks[taskIndex].completed = !tasks[taskIndex].completed;
   tasks[taskIndex].updatedAt = new Date().toISOString();
+
   writeJSON(TASKS_FILE, tasks);
   res.json(tasks[taskIndex]);
 });
