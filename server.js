@@ -6,17 +6,17 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
 const app = express();
-const PORT = 3001;
-const SECRET_KEY = 'super-secret-key-for-jwt-do-not-use-in-prod';
+const PORT = process.env.PORT || 3001;
+const SECRET_KEY = process.env.SECRET_KEY || 'super-secret-key-for-jwt-do-not-use-in-prod';
 
 app.use(cors());
 app.use(express.json());
 // Servir arquivos estáticos da pasta /public
 app.use(express.static(path.join(__dirname, 'public')));
-
-const USERS_FILE = path.join(__dirname, 'users.json');
-const TASKS_FILE = path.join(__dirname, 'tasks.json');
-const REVOKED_TOKENS_FILE = path.join(__dirname, 'revoked_tokens.json');
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const TASKS_FILE = path.join(DATA_DIR, 'tasks.json');
+const REVOKED_TOKENS_FILE = path.join(DATA_DIR, 'revoked_tokens.json');
 
 // Helper para criar os arquivos caso não existam
 function ensureFileExists(filePath, defaultData) {
